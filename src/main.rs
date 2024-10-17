@@ -26,10 +26,12 @@
 //! main.rs
 
 use std::net::TcpListener;
-use zero2prod::run;
+use zero2prod::startup::run;
+use zero2prod::configurations::get_configuration;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    let configuration = get_configuration().expect("Failed to read configuration");
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind addr");
     run(listener)?.await
 }
