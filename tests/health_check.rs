@@ -43,7 +43,7 @@ async fn spawn_app() -> TestApp {
     //     .expect("Failed to connect to Postgres");
     let connection_pool = configure_database(&configuration.database).await;
 
-    let server = run(listener, connection_pool.clone()).expect("Failed to bind addr");
+    let server = run(listener, connection_pool.clone()).expect("Failed to bind addr");    // 起了一个 HttpServer，在后续测试中通过调用spawn_app函数来进行httpserver和database connection的建立
     let _ = tokio::spawn(server);
 
     TestApp {
