@@ -5,29 +5,32 @@ use uuid::Uuid;
 use zero2prod::{configurations::{get_configuration, DatabaseSettings}, startup::run};
 // use sqlx::{PgConnection, Connection};
 use sqlx::{Connection, PgConnection, PgPool, Executor};
+use zero2prod::telemetry::{get_subscriber, init_subscriber};
+use once_cell::sync::Lazy;
+
+static TRACING: Lazy<()> = Lazy::new(|| {
+    let default_filter_level = "info".to_string();
+    // let subscriber = get_subscriber("test".into(), "debug".into());
+    // init_subscriber(subscriber);
+    let subscriber_name = "test".to_string();
+    if std::env::var("TEST_LOG").is_ok() {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
+        init_subscriber(subscriber);
+    } else {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
+        init_subscriber(subscriber);
+    };
+});
 
 pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool
 }
 
-#[tokio::test]
-async fn health_check_works() {
-    // spawn_app();
-    let client = reqwest::Client::new();
-    let test_app: TestApp = spawn_app().await;
-
-    let reponse = client
-        .get(format!("{}/health_check", &(test_app.address)))
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    assert!(reponse.status().is_success());
-    assert_eq!(Some(0), reponse.content_length());
-}
-
 async fn spawn_app() -> TestApp {
+    // let subscriber = get_subscriber("test".into(), "debug".into());
+    // init_subscriber(subscriber);
+    Lazy::force(&TRACING);
     // zero2prod::run().await
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind rand port");
     let port = listener.local_addr().unwrap().port();
@@ -70,6 +73,22 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .expect("Failed to migrate the database");
 
     connection_pool
+}
+
+#[tokio::test]
+async fn health_check_works() {
+    // spawn_app();
+    let client = reqwest::Client::new();
+    let test_app: TestApp = spawn_app().await;
+
+    let reponse = client
+        .get(format!("{}/health_check", &(test_app.address)))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    assert!(reponse.status().is_success());
+    assert_eq!(Some(0), reponse.content_length());
 }
 
 #[tokio::test]
