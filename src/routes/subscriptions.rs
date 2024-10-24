@@ -61,9 +61,12 @@ pub async fn insert_subscriber(pool: &PgPool, form: &FormData) -> Result<(), sql
         form.name,
         Utc::now()
     )
-    .execute(pool)    // 若 subscribe 函数保留 PgConnection 作为参数，则不满足此处execute方法要求参数实现 Executor trait，PgConnection类型的可变引用实现了该 trait（可变引用的唯一性保证同时只能存在一个在该Postgres连接上的查询），但 web::Data 无法提供对原类型的可变引用
-    .await    // 使用PgPool类型通过内部可变性实现共享引用
-    .map_err(|e| {
+    .execute(pool)    
+    // 若 subscribe 函数保留 PgConnection 作为参数，则不满足此处execute方法要求参数实现 Executor trait，
+    //PgConnection类型的可变引用实现了该 trait（可变引用的唯一性保证同时只能存在一个在该Postgres连接上的查询），但 web::Data 无法提供对原类型的可变引用
+    // 使用PgPool类型通过内部可变性实现共享引用
+    .await
+    .map_err(|e| {    // 此处闭包捕获 sqlx::query!(...).await 返回的 Err(e) 并将其所有权转移至闭包内（基于FnOnce trait实现）（若结果是Err的话）
         tracing::error!("Failed to execute query: {:?}", e);
         e
     })?;

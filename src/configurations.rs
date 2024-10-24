@@ -1,5 +1,5 @@
 //! src/configurations.rs
-//! 
+ 
 use secrecy::{ExposeSecret, Secret};
 
 #[derive(serde::Deserialize)]

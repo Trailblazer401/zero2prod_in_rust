@@ -14,7 +14,7 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     // let subscriber = get_subscriber("test".into(), "debug".into());
     // init_subscriber(subscriber);
     let subscriber_name = "test".to_string();
-    if std::env::var("TEST_LOG").is_ok() {
+    if std::env::var("TEST_LOG").is_ok() {    // 此处只要在 test 时指定 TEST_LOG 变量，不论是true还是false由std::env::var返回的结果均是Ok
         let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
         init_subscriber(subscriber);
     } else {
