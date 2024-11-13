@@ -4,11 +4,12 @@ use actix_web::{HttpResponse, web};
 use sqlx::PgPool;
 use chrono::Utc;
 use uuid::Uuid;
+use crate::domain::{NewSubscriber, SubscriberName};
 
 #[derive(serde::Deserialize)]    // 该处的属性宏#[derive()]用于自动为 FormData 结构体实现来自serde库的 trait: serde::Deserialize
 pub struct FormData {
     email: String,
-    name: String
+    name: String,
 }
 
 #[tracing::instrument(
@@ -32,7 +33,17 @@ pub async fn subscribe(form: web::Form<FormData>, pool: web::Data<PgPool>) -> Ht
     // let _request_span_guard = request_span.enter();
 
     // let query_span = tracing::info_span!("Saving new subscriber details into database...");
-    match insert_subscriber(&pool, &form).await {
+    let name = match SubscriberName::parse(form.0.name) {
+        Ok(name) => name,
+        Err(_) => return HttpResponse::BadRequest().finish(),
+    };
+    let new_subscriber = NewSubscriber {
+        email: form.0.email,
+        // name: SubscriberName::parse(form.0.name).expect("Name validation failed."),
+        name,
+    };
+
+    match insert_subscriber(&pool, &new_subscriber).await {
         Ok(_) => {
             // tracing::info!("Request id:{} - New subscriber details have been saved successfully.", requset_id);
             HttpResponse::Ok().finish()
@@ -48,17 +59,17 @@ pub async fn subscribe(form: web::Form<FormData>, pool: web::Data<PgPool>) -> Ht
 
 #[tracing::instrument(
     name = "Saving new subscriber details into database",
-    skip(form, pool)
+    skip(new_subscriber, pool)
 )]
-pub async fn insert_subscriber(pool: &PgPool, form: &FormData) -> Result<(), sqlx::Error> {
+pub async fn insert_subscriber(pool: &PgPool, new_subscriber: &NewSubscriber) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at)
         VALUES ($1, $2, $3, $4)
         "#,   //使用 r#"..."# 包裹SQL查询，即使用原始字符串字面量定义查询语句，这样在SQL命令中不需要进行特殊字符的转义
         Uuid::new_v4(),
-        form.email,
-        form.name,
+        new_subscriber.email,
+        new_subscriber.name.as_ref(),
         Utc::now()
     )
     .execute(pool)    

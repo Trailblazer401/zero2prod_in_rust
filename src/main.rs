@@ -1,9 +1,9 @@
-//! main.rs
+//! src/main.rs
 
 use std::net::TcpListener;
 use zero2prod::startup::run;
 use zero2prod::configurations::get_configuration;
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::postgres::PgPoolOptions;
 // use env_logger::Env;
 use zero2prod::telemetry::{get_subscriber, init_subscriber};
 // use secrecy::ExposeSecret;
