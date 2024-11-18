@@ -2,3 +2,6 @@ application:
   host: 0.0.0.0
 database:
   ssl_required: true
+email_client:
+  base_url: "https://api.send_email.com"
+  sender_email: "real_sender@gmail.com"

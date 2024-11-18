@@ -6,6 +6,7 @@ use zero2prod::configurations::get_configuration;
 use sqlx::postgres::PgPoolOptions;
 // use env_logger::Env;
 use zero2prod::telemetry::{get_subscriber, init_subscriber};
+use zero2prod::email_client::EmailClient;
 // use secrecy::ExposeSecret;
 
 #[tokio::main]
@@ -18,10 +19,12 @@ async fn main() -> std::io::Result<()> {
     // let connection_pool = PgPool::connect_lazy(&configuration.database.connection_string().expose_secret())
         // .await
         // .expect("Failed to connect to Postgres");
+    let sender_email = configuration.email_client.sender().expect("Invalid sender email");
+    let email_client = EmailClient::new(configuration.email_client.base_url, sender_email);
     let connection_pool = PgPoolOptions::new()
         .acquire_timeout(std::time::Duration::from_secs(2))
         .connect_lazy_with(configuration.database.with_db());
     let addr = format!("{}:{}", configuration.application.host, configuration.application.port);
     let listener = TcpListener::bind(addr)?;
-    run(listener, connection_pool)?.await
+    run(listener, connection_pool, email_client)?.await
 }

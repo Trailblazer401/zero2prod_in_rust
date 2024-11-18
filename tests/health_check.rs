@@ -2,7 +2,7 @@
 
 use std::net::TcpListener;
 use uuid::Uuid;
-use zero2prod::{configurations::{get_configuration, DatabaseSettings}, startup::run};
+use zero2prod::{configurations::{get_configuration, DatabaseSettings}, email_client::EmailClient, startup::run};
 // use sqlx::{PgConnection, Connection};
 use sqlx::{Connection, PgConnection, PgPool, Executor};
 use zero2prod::telemetry::{get_subscriber, init_subscriber};
@@ -46,8 +46,10 @@ async fn spawn_app() -> TestApp {
     //     .await
     //     .expect("Failed to connect to Postgres");
     let connection_pool = configure_database(&configuration.database).await;
+    let sender_email = configuration.email_client.sender().expect("Invalid sender email");
+    let email_client = EmailClient::new(configuration.email_client.base_url, sender_email);
 
-    let server = run(listener, connection_pool.clone()).expect("Failed to bind addr");    // 起了一个 HttpServer，在后续测试中通过调用spawn_app函数来进行httpserver和database connection的建立
+    let server = run(listener, connection_pool.clone(), email_client.clone()).expect("Failed to bind addr");    // 起了一个 HttpServer，在后续测试中通过调用spawn_app函数来进行httpserver和database connection的建立
     let _ = tokio::spawn(server);
 
     TestApp {
