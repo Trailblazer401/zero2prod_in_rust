@@ -9,3 +9,5 @@ database:
 email_client:
   base_url: "localhost"
   sender_email: "test@gmail.com"
+  authorization_token: "a-secret-token"
+  timeout_millisec: 2000

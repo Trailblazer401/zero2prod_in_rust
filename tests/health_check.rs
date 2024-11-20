@@ -47,7 +47,8 @@ async fn spawn_app() -> TestApp {
     //     .expect("Failed to connect to Postgres");
     let connection_pool = configure_database(&configuration.database).await;
     let sender_email = configuration.email_client.sender().expect("Invalid sender email");
-    let email_client = EmailClient::new(configuration.email_client.base_url, sender_email);
+    let timeout = configuration.email_client.timeout();
+    let email_client = EmailClient::new(configuration.email_client.base_url, sender_email, configuration.email_client.authorization_token, timeout);
 
     let server = run(listener, connection_pool.clone(), email_client.clone()).expect("Failed to bind addr");    // 起了一个 HttpServer，在后续测试中通过调用spawn_app函数来进行httpserver和database connection的建立
     let _ = tokio::spawn(server);
