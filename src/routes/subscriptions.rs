@@ -4,7 +4,7 @@ use actix_web::{web, HttpResponse};
 use sqlx::PgPool;
 use chrono::Utc;
 use uuid::Uuid;
-use crate::domain::{NewSubscriber, SubscriberName, SubscriberEmail};
+use crate::{domain::{NewSubscriber, SubscriberEmail, SubscriberName}, email_client::EmailClient};
 
 #[derive(serde::Deserialize)]    // 该处的属性宏#[derive()]用于自动为 FormData 结构体实现来自serde库的 trait: serde::Deserialize
 pub struct FormData {
@@ -24,14 +24,18 @@ impl TryFrom<FormData> for NewSubscriber {
 
 #[tracing::instrument(
     name = "Adding a new subscriber...",
-    skip(form, pool),
+    skip(form, pool, email_client),
     fields(
         // request_id = %Uuid::new_v4(),
         subscriber_name = %form.name,
         subscriber_email = %form.email
     )
 )]
-pub async fn subscribe(form: web::Form<FormData>, pool: web::Data<PgPool>) -> HttpResponse {
+pub async fn subscribe(
+    form: web::Form<FormData>, 
+    pool: web::Data<PgPool>,
+    email_client: web::Data<EmailClient>
+) -> HttpResponse {
     // let requset_id = Uuid::new_v4();
     // tracing::info!("Request id:{} - Adding '{}:{}' as a new subscriber...", requset_id, form.name, form.email);
     // let request_span = tracing::info_span!(
@@ -48,18 +52,22 @@ pub async fn subscribe(form: web::Form<FormData>, pool: web::Data<PgPool>) -> Ht
         Err(_) => return HttpResponse::BadRequest().finish(),
     };
 
-    match insert_subscriber(&pool, &new_subscriber).await {
-        Ok(_) => {
-            // tracing::info!("Request id:{} - New subscriber details have been saved successfully.", requset_id);
-            HttpResponse::Ok().finish()
-        }
-        Err(_) => {
-            // println!("Failed to execute query: {}", e);
-            // tracing::error!("Request id:{} - Failed to execute query: {:?}", requset_id, e);
-            HttpResponse::InternalServerError().finish()
-        }
+    // match insert_subscriber(&pool, &new_subscriber).await {
+    //     Ok(_) => {
+    //         HttpResponse::Ok().finish()
+    //     }
+    //     Err(_) => {
+    //         HttpResponse::InternalServerError().finish()
+    //     }
+    // }
+    if insert_subscriber(&pool, &new_subscriber).await.is_err() {
+        return HttpResponse::InternalServerError().finish();
     }
-    // HttpResponse::Ok().finish()
+    if send_confirmation_email(&email_client, new_subscriber).await.is_err()
+    {
+        return HttpResponse::InternalServerError().finish();
+    }
+    HttpResponse::Ok().finish()
 }
 
 #[tracing::instrument(
@@ -87,4 +95,33 @@ pub async fn insert_subscriber(pool: &PgPool, new_subscriber: &NewSubscriber) ->
         e
     })?;
     Ok(())
+}
+
+#[tracing::instrument(
+    name = "Sending new subscriber a confirmation email",
+    skip(email_client, new_subscriber)
+)]
+async fn send_confirmation_email(
+    email_client: &EmailClient,
+    new_subscriber: NewSubscriber,
+) -> Result<(), reqwest::Error> {
+    let confirmation_link = "https://some-sort-of-a-api.com/subscriptions/confirm";
+
+    let plain_body = format!(
+        "Welcome to our newsletter!\n
+        Visit {} to confirm your subscription.", 
+        confirmation_link
+    );
+    let html_body = format!(
+        "Welcome to our newsletter!<br />\
+        Click <a href=\"{}\">here</a> to confirm your subscription.", 
+        confirmation_link
+    );
+
+    email_client.send_email(
+        new_subscriber.email,
+        "Welcome",
+        &html_body,
+        &plain_body,
+    ).await
 }
