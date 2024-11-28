@@ -15,14 +15,15 @@ pub fn get_subscriber<Sink>(    // <> 表示该函数使用泛型参数（本函
     name: String, 
     env_filter: String,
     sink: Sink
-) -> impl Subscriber + Sync + Send
+) -> impl Subscriber + Sync + Send  // 此处为 opaque type 返回类型，即该函数的具体返回类型对调用者是隐藏的，表示该函数返回了一个实现规定 trait 的某类型
     where 
         Sink: for<'a> MakeWriter<'a> + Send + Sync + 'static,
-        // for<'a> trait<'a> 表示泛型生命周期绑定（或称高阶特质约束 HRTB），具体指 Sink 泛型必须实现 MakeWriter trait，且该 trait 可作用于*任意*生命周期（由for<‘a>指定）
+        // for<'a> trait<'a> 表示泛型生命周期绑定（或称高阶特质约束 HRTB），具体指 Sink 泛型必须为任何生命周期 ‘a 实现 MakerWriter<'a> Trait，
+        // 其中 MakeWriter<'a> 又规定了 Sink 的借用关系依赖生命周期 ’a
         // ‘static 表示 Sink 泛型的所有数据在程序运行期间都必须有效（静态生命周期），即 Sink 只能持有拥有 ’static 生命周期的引用或不持有任何引用
 {
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(env_filter));    // unwrap_or_else  match Some(T) => T, None => op 
+        .unwrap_or_else(|_| EnvFilter::new(env_filter));    // unwrap_or_else  match Some(T) => T, None => op(e from Err(e)) 
     let formatting_layer = BunyanFormattingLayer::new(
         name, 
         sink

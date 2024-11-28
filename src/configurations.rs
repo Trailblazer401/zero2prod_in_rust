@@ -8,6 +8,7 @@ use sqlx::ConnectOptions;
 use crate::domain::SubscriberEmail;
 
 #[derive(serde::Deserialize, Clone)]
+// 使用派生 trait 宏自动为结构体实现指定 trait，相当于使用 impl Clone for struct 并递归地为结构体中的每一类型进行 .clone() 方法调用（前提是每一类型都实现了Clone trait）
 pub struct Settings {
     pub database: DatabaseSettings,
     // pub application_port: u16
@@ -47,7 +48,9 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
 
     let environment: Environment = std::env::var("APP_ENVIRONMENT")
         .unwrap_or_else(|_| "local".into())
+        // "local".into(): convert [ &'static str ](slice) to [ String ]
         .try_into()
+        // try_into(): convert [ String ](from unwrap_or_else return) to [ Ok(Environment) ] or [ Err(String) ] 
         .expect("Failed to parse APP_ENVIRONMENT");
     let environment_filename = format!("{}.yaml", environment.as_str());
 
@@ -56,6 +59,7 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
         .add_source(config::File::from(configuration_directory.join("base.yaml")))
         .add_source(config::File::from(configuration_directory.join(&environment_filename)))
         .add_source(config::Environment::with_prefix("APP").prefix_separator("_").separator("__"))
+        // use env variable like "APP_APPLICATION__PORT" to overwrite the Setting values in the configuration YAML files
         .build()?;
 
     settings.try_deserialize::<Settings>()
@@ -76,7 +80,7 @@ impl Environment {
 }
 
 impl TryFrom<String> for Environment {
-    type Error = String;
+    type Error = String;    // literally claim the return error type
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.to_lowercase().as_str() {

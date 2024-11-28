@@ -3,7 +3,7 @@
 use validator::validate_email;
 
 #[derive(Debug, Clone)]
-pub struct SubscriberEmail(String);
+pub struct SubscriberEmail(String); // 元祖结构体，直接用索引访问值（.0）
 
 impl SubscriberEmail {
     pub fn parse(s: String) -> Result<SubscriberEmail, String> {

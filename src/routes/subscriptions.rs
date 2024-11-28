@@ -36,30 +36,11 @@ pub async fn subscribe(
     pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>
 ) -> HttpResponse {
-    // let requset_id = Uuid::new_v4();
-    // tracing::info!("Request id:{} - Adding '{}:{}' as a new subscriber...", requset_id, form.name, form.email);
-    // let request_span = tracing::info_span!(
-    //     "Adding a new subscriber...",
-    //     %requset_id,
-    //     subscriber_name = %form.name,
-    //     subscriber_email = %form.email
-    // );
-    // let _request_span_guard = request_span.enter();
-
-    // let query_span = tracing::info_span!("Saving new subscriber details into database...");
     let new_subscriber = match form.0.try_into() {  // web::Form<T> 实际上是一个包含一泛型的元祖结构体，即 struct Form<T>(T)， 使用.0访问其第一个字段 T
         Ok(form) => form,
         Err(_) => return HttpResponse::BadRequest().finish(),
     };
 
-    // match insert_subscriber(&pool, &new_subscriber).await {
-    //     Ok(_) => {
-    //         HttpResponse::Ok().finish()
-    //     }
-    //     Err(_) => {
-    //         HttpResponse::InternalServerError().finish()
-    //     }
-    // }
     if insert_subscriber(&pool, &new_subscriber).await.is_err() {
         return HttpResponse::InternalServerError().finish();
     }
@@ -87,7 +68,7 @@ pub async fn insert_subscriber(pool: &PgPool, new_subscriber: &NewSubscriber) ->
     )
     .execute(pool)    
     // 若 subscribe 函数保留 PgConnection 作为参数，则不满足此处execute方法要求参数实现 Executor trait，
-    //PgConnection类型的可变引用实现了该 trait（可变引用的唯一性保证同时只能存在一个在该Postgres连接上的查询），但 web::Data 无法提供对原类型的可变引用
+    // PgConnection类型的可变引用实现了该 trait（可变引用的唯一性保证同时只能存在一个在该Postgres连接上的查询），但 web::Data 无法提供对原类型的可变引用
     // 使用PgPool类型通过内部可变性实现共享引用
     .await
     .map_err(|e| {    // 此处闭包捕获 sqlx::query!(...).await 返回的 Err(e) 并将其所有权转移至闭包内（基于FnOnce trait实现）（若结果是Err的话）

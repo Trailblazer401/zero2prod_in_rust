@@ -8,7 +8,7 @@ use secrecy::{ExposeSecret, Secret};
 pub struct EmailClient {
     sender: SubscriberEmail,
     http_client: Client,
-    base_url: String,
+    base_url: String,  // stored the link to trigger a third-party email sending service API
     authorization_token: Secret<String>,
 }
 
@@ -50,7 +50,8 @@ impl EmailClient {
         text_content: &str,
     ) -> Result<(), reqwest::Error> {
         // todo!()
-        let url = format!("{}/email", self.base_url);
+        let url = format!("{}/email", self.base_url);   // 此处 format! 宏没有消耗 base_url（使用的是其引用）
+        // base_url/email is a third-party service provider defined, sending-service request link format 
         let request_body = SendEmailRequest {
             // from: self.sender.as_ref().to_owned(),
             from: self.sender.as_ref(),
@@ -59,7 +60,7 @@ impl EmailClient {
             html_body: html_content,
             text_body: text_content,
         };
-        let builder = self
+        let _builder = self
             .http_client
             .post(&url)
             .header(
@@ -121,6 +122,7 @@ mod tests {
         // let email_client = EmailClient::new(mock_server.uri(), sender, Secret::new(Faker.fake()));
         let email_client = email_client(mock_server.uri());
 
+        // using MockServer to check if the sending http request body is built correctly 
         Mock::given(header_exists("Some-sort-of-a-token"))
             .and(header("Content-Type", "application/json"))
             .and(path("/email"))
@@ -137,6 +139,7 @@ mod tests {
 
         let _ = email_client.send_email(subscriber_email, &subject, &content, &content).await;
 
+        // MockServer will verify if the expect has been  approached before leaving its field
     }
 
     #[tokio::test]
