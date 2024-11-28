@@ -7,7 +7,7 @@ use actix_web::{
     web, 
     dev::Server
 };
-use crate::{configurations::{DatabaseSettings, Settings}, routes::{health_check, subscribe}};
+use crate::{configurations::{DatabaseSettings, Settings}, routes::{health_check, subscribe, confirm}};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tracing_actix_web::TracingLogger;
 use crate::email_client::EmailClient;
@@ -45,7 +45,8 @@ impl Application {
         let server = run(
             listener, 
             connection_pool, 
-            email_client
+            email_client,
+            configuration.application.base_url,
         )?;
 
         Ok(Self {port, server})
@@ -66,10 +67,18 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
         .connect_lazy_with(configuration.with_db())
 }
 
-pub fn run(listener: TcpListener, db_pool: PgPool, email_client: EmailClient) -> Result<Server, std::io::Error> {
+pub struct ApplicationBaseUrl(pub String);
+
+pub fn run(
+    listener: TcpListener, 
+    db_pool: PgPool, 
+    email_client: EmailClient, 
+    base_url: String
+) -> Result<Server, std::io::Error> {
     // 此处使用智能指针（计数指针Arc）包装connection，这使得原本不具有clone trait的PgPool（PgConnection）类型通过Arc计数指针实现可克隆性质，每次克隆使得Arc计数+1
     let db_pool = web::Data::new(db_pool);    
     let email_client = web::Data::new(email_client);
+    let base_url = web::Data::new(ApplicationBaseUrl(base_url));
     // 此处 HttpServer::new(|| {...}) 中使用闭包进行参数传递，|...| 表示闭包的参数列表，该处没有传入闭包的参数，故参数列表为空（ || )，
     // {...}表示闭包的实现体，包含闭包的执行逻辑，该闭包返回一个配置了路由的App实例
     let server = HttpServer::new(move || {    // 使用 move 将外部变量（此处是 db_pool和email client）的所有权转移到闭包内部，以期能在闭包内部安全地调用其clone方法
@@ -82,9 +91,11 @@ pub fn run(listener: TcpListener, db_pool: PgPool, email_client: EmailClient) ->
             // 并通过web::get().to(greet)将对该路由的http get请求映射到处理函数greet实现参数传递，该参数传递由actix web通过函数签名自动推断完成，因此greet也没有显式的参数列表
             .route("/health_check", web::get().to(health_check))
             .route("/subscriptions", web::post().to(subscribe))
+            .route("/subscriptions/confirm", web::get().to(confirm))
             // 使用app_data方法将PgPool(PgConnection)连接对象注册为该App实例的一部分，这里使用Arc实现clone trait，以使连接对每一个App实例可克隆
             .app_data(db_pool.clone())    
             .app_data(email_client.clone())
+            .app_data(base_url.clone())
     })    
     .listen(listener)?    
     // 此处 ? 运算的对象是由bind函数运行返回的 Result<Self> 即 Result<HttpServer, E>，绑定成功则 Result<Self> 会是 Ok(HttpServer)，则该链式调用继续执行run方法；

@@ -4,7 +4,7 @@ use actix_web::{web, HttpResponse};
 use sqlx::PgPool;
 use chrono::Utc;
 use uuid::Uuid;
-use crate::{domain::{NewSubscriber, SubscriberEmail, SubscriberName}, email_client::EmailClient};
+use crate::{domain::{NewSubscriber, SubscriberEmail, SubscriberName}, email_client::EmailClient, startup::ApplicationBaseUrl};
 
 #[derive(serde::Deserialize)]    // 该处的属性宏#[derive()]用于自动为 FormData 结构体实现来自serde库的 trait: serde::Deserialize
 pub struct FormData {
@@ -24,7 +24,7 @@ impl TryFrom<FormData> for NewSubscriber {
 
 #[tracing::instrument(
     name = "Adding a new subscriber...",
-    skip(form, pool, email_client),
+    skip(form, pool, email_client, base_url),
     fields(
         // request_id = %Uuid::new_v4(),
         subscriber_name = %form.name,
@@ -34,7 +34,8 @@ impl TryFrom<FormData> for NewSubscriber {
 pub async fn subscribe(
     form: web::Form<FormData>, 
     pool: web::Data<PgPool>,
-    email_client: web::Data<EmailClient>
+    email_client: web::Data<EmailClient>,
+    base_url: web::Data<ApplicationBaseUrl>,
 ) -> HttpResponse {
     let new_subscriber = match form.0.try_into() {  // web::Form<T> 实际上是一个包含一泛型的元祖结构体，即 struct Form<T>(T)， 使用.0访问其第一个字段 T
         Ok(form) => form,
@@ -44,7 +45,7 @@ pub async fn subscribe(
     if insert_subscriber(&pool, &new_subscriber).await.is_err() {
         return HttpResponse::InternalServerError().finish();
     }
-    if send_confirmation_email(&email_client, new_subscriber).await.is_err()
+    if send_confirmation_email(&email_client, new_subscriber, &base_url.0).await.is_err()
     {
         return HttpResponse::InternalServerError().finish();
     }
@@ -59,7 +60,7 @@ pub async fn insert_subscriber(pool: &PgPool, new_subscriber: &NewSubscriber) ->
     sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at, status)
-        VALUES ($1, $2, $3, $4, 'confirmed')
+        VALUES ($1, $2, $3, $4, 'pending_confirmation')
         "#,   //使用 r#"..."# 包裹SQL查询，即使用原始字符串字面量定义查询语句，这样在SQL命令中不需要进行特殊字符的转义
         Uuid::new_v4(),
         new_subscriber.email.as_ref(),
@@ -80,13 +81,14 @@ pub async fn insert_subscriber(pool: &PgPool, new_subscriber: &NewSubscriber) ->
 
 #[tracing::instrument(
     name = "Sending new subscriber a confirmation email",
-    skip(email_client, new_subscriber)
+    skip(email_client, new_subscriber, base_url)
 )]
 async fn send_confirmation_email(
     email_client: &EmailClient,
     new_subscriber: NewSubscriber,
+    base_url: &str
 ) -> Result<(), reqwest::Error> {
-    let confirmation_link = "https://some-sort-of-a-api.com/subscriptions/confirm";
+    let confirmation_link = format!("{}/subscriptions/confirm?subscriptions_token=atoken", base_url);
 
     let plain_body = format!(
         "Welcome to our newsletter!\n
