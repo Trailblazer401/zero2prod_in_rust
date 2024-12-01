@@ -5,6 +5,9 @@ use sqlx::PgPool;
 use chrono::Utc;
 use uuid::Uuid;
 use crate::{domain::{NewSubscriber, SubscriberEmail, SubscriberName}, email_client::EmailClient, startup::ApplicationBaseUrl};
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
+use sqlx::{Postgres, Transaction};
 
 #[derive(serde::Deserialize)]    // 该处的属性宏#[derive()]用于自动为 FormData 结构体实现来自serde库的 trait: serde::Deserialize
 pub struct FormData {
@@ -42,10 +45,31 @@ pub async fn subscribe(
         Err(_) => return HttpResponse::BadRequest().finish(),
     };
 
-    if insert_subscriber(&pool, &new_subscriber).await.is_err() {
+    let mut transaction= match pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
+
+    let subscriber_id = match insert_subscriber(&mut transaction, &new_subscriber).await {
+        Ok(subscriber_id) => subscriber_id,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
+
+    let subscription_token = generate_subscription_token();
+    if store_token(&mut transaction, subscriber_id, &subscription_token).await.is_err() {
         return HttpResponse::InternalServerError().finish();
     }
-    if send_confirmation_email(&email_client, new_subscriber, &base_url.0).await.is_err()
+
+    if transaction.commit().await.is_err() {
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    if send_confirmation_email(
+        &email_client, 
+        new_subscriber, 
+        &base_url.0,
+        &subscription_token,
+    ).await.is_err()
     {
         return HttpResponse::InternalServerError().finish();
     }
@@ -54,20 +78,25 @@ pub async fn subscribe(
 
 #[tracing::instrument(
     name = "Saving new subscriber details into database",
-    skip(new_subscriber, pool)
+    skip(new_subscriber, transaction)
 )]
-pub async fn insert_subscriber(pool: &PgPool, new_subscriber: &NewSubscriber) -> Result<(), sqlx::Error> {
+pub async fn insert_subscriber(
+    transaction: &mut Transaction<'_, Postgres>,
+    // transaction: E,
+    new_subscriber: &NewSubscriber
+) -> Result<Uuid, sqlx::Error> {
+    let subscriber_id = Uuid::new_v4();
     sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at, status)
         VALUES ($1, $2, $3, $4, 'pending_confirmation')
         "#,   //使用 r#"..."# 包裹SQL查询，即使用原始字符串字面量定义查询语句，这样在SQL命令中不需要进行特殊字符的转义
-        Uuid::new_v4(),
+        subscriber_id,
         new_subscriber.email.as_ref(),
         new_subscriber.name.as_ref(),
         Utc::now()
     )
-    .execute(pool)    
+    .execute(transaction)    
     // 若 subscribe 函数保留 PgConnection 作为参数，则不满足此处execute方法要求参数实现 Executor trait，
     // PgConnection类型的可变引用实现了该 trait（可变引用的唯一性保证同时只能存在一个在该Postgres连接上的查询），但 web::Data 无法提供对原类型的可变引用
     // 使用PgPool类型通过内部可变性实现共享引用
@@ -76,19 +105,28 @@ pub async fn insert_subscriber(pool: &PgPool, new_subscriber: &NewSubscriber) ->
         tracing::error!("Failed to execute query: {:?}", e);
         e
     })?;
-    Ok(())
+    Ok(subscriber_id)
 }
 
 #[tracing::instrument(
     name = "Sending new subscriber a confirmation email",
-    skip(email_client, new_subscriber, base_url)
+    skip(email_client, 
+        new_subscriber, 
+        base_url, 
+        subscription_token
+    )
 )]
-async fn send_confirmation_email(
+pub async fn send_confirmation_email(
     email_client: &EmailClient,
     new_subscriber: NewSubscriber,
-    base_url: &str
+    base_url: &str,
+    subscription_token: &str,
 ) -> Result<(), reqwest::Error> {
-    let confirmation_link = format!("{}/subscriptions/confirm?subscriptions_token=atoken", base_url);
+    let confirmation_link = format!(
+        "{}/subscriptions/confirm?subscription_token={}", 
+        base_url, 
+        subscription_token
+    );
 
     let plain_body = format!(
         "Welcome to our newsletter!\n
@@ -107,4 +145,37 @@ async fn send_confirmation_email(
         &html_body,
         &plain_body,
     ).await
+}
+
+fn generate_subscription_token() -> String {
+    let mut rng = thread_rng();
+    std::iter::repeat_with(|| rng.sample(Alphanumeric))
+        .map(char::from)
+        .take(25)
+        .collect()
+}
+
+#[tracing::instrument(
+    name = "Store subscription token into database...",
+    skip(subscription_token, transaction)
+)]
+pub async fn store_token(
+    transaction: &mut Transaction<'_, Postgres>,
+    subscriber_id: Uuid,
+    subscription_token: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"INSERT INTO subscription_tokens 
+        (subscription_token, subscriber_id)
+        VALUES ($1, $2)"#,
+        subscription_token,
+        subscriber_id
+    )
+    .execute(transaction)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to execute query: {:?}", e);
+        e
+    })?;
+    Ok(())
 }

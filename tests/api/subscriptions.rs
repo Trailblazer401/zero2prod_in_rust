@@ -115,24 +115,46 @@ async fn subscribe_sends_a_confirmation_email_with_a_link() {
 
     app.post_subscriptions(body.into()).await;
 
-    let email_requests = &app.email_server
+    let email_request = &app.email_server
         .received_requests()
         .await
         .unwrap()[0];
+    let confirmation_link = app.get_confirmation_links(&email_request);
 
-    let body: serde_json::Value = serde_json::from_slice(&email_requests.body).unwrap();
+    assert_eq!(confirmation_link.html, confirmation_link.plain_text);
+}
 
-    let get_link = |s: &str| {
-        let links: Vec<_> = linkify::LinkFinder::new()
-            .links(s)
-            .filter(|l| *l.kind() == linkify::LinkKind::Url)
-            .collect();
-        assert_eq!(links.len(), 1);
-        links[0].as_str().to_owned()
-    };
+#[tokio::test]
+async fn clicks_the_link_confirms_a_new_subscriber() {
+    let app = spawn_app().await;
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
 
-    let html_link = get_link(&body["HtmlBody"].as_str().unwrap());
-    let text_link= get_link(&body["TextBody"].as_str().unwrap());
+    Mock::given(path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&app.email_server)
+        .await;
 
-    assert_eq!(html_link, text_link);
+    app.post_subscriptions(body.into()).await;
+
+    let email_request = &app.email_server
+        .received_requests()
+        .await
+        .unwrap()[0];
+    let confirmation_link = app.get_confirmation_links(&email_request);
+
+    reqwest::get(confirmation_link.html)
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();    
+
+    let saved = sqlx::query!("SELECT email, name, status FROM subscriptions",)
+        .fetch_one(&app.db_pool)
+        .await
+        .expect("Failed to fetch saved subscriptions");
+
+    assert_eq!(saved.email, "ursula_le_guin@gmail.com");
+    assert_eq!(saved.name, "le guin");
+    assert_eq!(saved.status, "confirmed");
 }
