@@ -1,7 +1,7 @@
 //! src/routes/subscriptions.rs
 
 use actix_web::{web, HttpResponse};
-use sqlx::PgPool;
+use sqlx::{Executor, PgPool};
 use chrono::Utc;
 use uuid::Uuid;
 use crate::{domain::{NewSubscriber, SubscriberEmail, SubscriberName}, email_client::EmailClient, startup::ApplicationBaseUrl};
@@ -82,11 +82,10 @@ pub async fn subscribe(
 )]
 pub async fn insert_subscriber(
     transaction: &mut Transaction<'_, Postgres>,
-    // transaction: E,
     new_subscriber: &NewSubscriber
 ) -> Result<Uuid, sqlx::Error> {
     let subscriber_id = Uuid::new_v4();
-    sqlx::query!(
+    let query = sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at, status)
         VALUES ($1, $2, $3, $4, 'pending_confirmation')
@@ -95,16 +94,17 @@ pub async fn insert_subscriber(
         new_subscriber.email.as_ref(),
         new_subscriber.name.as_ref(),
         Utc::now()
-    )
-    .execute(transaction)    
-    // 若 subscribe 函数保留 PgConnection 作为参数，则不满足此处execute方法要求参数实现 Executor trait，
-    // PgConnection类型的可变引用实现了该 trait（可变引用的唯一性保证同时只能存在一个在该Postgres连接上的查询），但 web::Data 无法提供对原类型的可变引用
-    // 使用PgPool类型通过内部可变性实现共享引用
-    .await
-    .map_err(|e| {    // 此处闭包捕获 sqlx::query!(...).await 返回的 Err(e) 并将其所有权转移至闭包内（基于FnOnce trait实现）（若结果是Err的话）
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
+    );
+    transaction
+        .execute(query)    
+        // 若 subscribe 函数保留 PgConnection 作为参数，则不满足此处execute方法要求参数实现 Executor trait，
+        // PgConnection类型的可变引用实现了该 trait（可变引用的唯一性保证同时只能存在一个在该Postgres连接上的查询），但 web::Data 无法提供对原类型的可变引用
+        // 使用PgPool类型通过内部可变性实现共享引用
+        .await
+        .map_err(|e| {    // 此处闭包捕获 sqlx::query!(...).await 返回的 Err(e) 并将其所有权转移至闭包内（基于FnOnce trait实现）（若结果是Err的话）
+            tracing::error!("Failed to execute query: {:?}", e);
+            e
+        })?;
     Ok(subscriber_id)
 }
 
@@ -164,18 +164,19 @@ pub async fn store_token(
     subscriber_id: Uuid,
     subscription_token: &str,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query!(
+    let query = sqlx::query!(
         r#"INSERT INTO subscription_tokens 
         (subscription_token, subscriber_id)
         VALUES ($1, $2)"#,
         subscription_token,
         subscriber_id
-    )
-    .execute(transaction)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
-    Ok(())
+    );
+    transaction
+        .execute(query)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to execute query: {:?}", e);
+            e
+        })?;
+        Ok(())
 }
