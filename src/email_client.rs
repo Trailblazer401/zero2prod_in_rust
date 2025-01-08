@@ -44,7 +44,7 @@ impl EmailClient {
     }
     pub async fn send_email(
         &self,
-        recipient: SubscriberEmail,
+        recipient: &SubscriberEmail,
         subject: &str,
         html_content: &str,
         text_content: &str,
@@ -137,7 +137,7 @@ mod tests {
         let subject: String = Sentence(1..2).fake();
         let content: String = Paragraph(1..10).fake();
 
-        let _ = email_client.send_email(subscriber_email, &subject, &content, &content).await;
+        let _ = email_client.send_email(&subscriber_email, &subject, &content, &content).await;
 
         // MockServer will verify if the expect has been  approached before leaving its field
     }
@@ -157,7 +157,7 @@ mod tests {
         let subject: String = Sentence(1..2).fake();
         let content: String = Paragraph(1..10).fake();
 
-        let outcome = email_client.send_email(subscriber_email, &subject, &content, &content).await;
+        let outcome = email_client.send_email(&subscriber_email, &subject, &content, &content).await;
 
         assert_ok!(outcome);
     }
@@ -178,7 +178,7 @@ mod tests {
         let subject: String = Sentence(1..2).fake();
         let content: String = Paragraph(1..10).fake();
 
-        let outcome = email_client.send_email(subscriber_email, &subject, &content, &content).await;
+        let outcome = email_client.send_email(&subscriber_email, &subject, &content, &content).await;
 
         assert_err!(outcome);
     }
@@ -199,7 +199,7 @@ mod tests {
         let subject: String = Sentence(1..2).fake();
         let content: String = Paragraph(1..10).fake();
 
-        let outcome = email_client.send_email(subscriber_email, &subject, &content, &content).await;
+        let outcome = email_client.send_email(&subscriber_email, &subject, &content, &content).await;
 
         assert_err!(outcome);
     }
