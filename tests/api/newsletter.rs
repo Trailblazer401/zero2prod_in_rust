@@ -20,7 +20,7 @@ async fn newsletters_are_not_delivered_to_pending_subscribers() {
     let newsletters_request_body = serde_json::json!({
         "title": "newsletter title",
         "content": {
-            "test": "newsletter content",
+            "text": "newsletter content",
             "html": "<p>newsletter content</p>"
         }
     });
@@ -82,7 +82,7 @@ async fn newsletters_are_delivered_to_confirmed_subscribers() {
     let newsletters_request_body = serde_json::json!({
         "title": "newsletter title",
         "content": {
-            "test": "newsletter content",
+            "text": "newsletter content",
             "html": "<p>newsletter content</p>"
         }
     });
@@ -99,7 +99,7 @@ async fn newsletters_returns_400_for_invalid_data() {
     let test_cases = vec![
         (serde_json::json!({
             "content": {
-                "test": "newsletter content",
+                "text": "newsletter content",
                 "html": "<p>newsletter content</p>"
             }
         }), "missing title"),
@@ -120,4 +120,31 @@ async fn newsletters_returns_400_for_invalid_data() {
             error_message
         );
     }
+}
+
+#[tokio::test]
+async fn reject_requests_missing_authorization() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act
+    let reponse = reqwest::Client::new()
+        .post(&format!("{}/newsletters", &app.address))
+        .json(&serde_json::json!({
+            "title": "newsletter title",
+            "content": {
+                "text": "newsletter content",
+                "html": "<p>newsletter content</p>"
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Assert
+    assert_eq!(401, reponse.status().as_u16());
+    assert_eq!(
+        r#"Basic realm="publish""#,
+        reponse.headers()["www-authenticate"]
+    )
 }

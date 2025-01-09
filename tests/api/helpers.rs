@@ -8,6 +8,7 @@ use sqlx::{Connection, PgConnection, PgPool, Executor};
 use zero2prod::telemetry::{get_subscriber, init_subscriber};
 use once_cell::sync::Lazy;
 use zero2prod::startup;
+use sha3::Digest;
 // use secrecy::ExposeSecret;
 
 static TRACING: Lazy<()> = Lazy::new(|| {
@@ -29,6 +30,7 @@ pub struct TestApp {
     pub db_pool: PgPool,
     pub email_server: MockServer,
     pub port: u16,
+    test_user: TestUser,
 }
 
 pub struct ConfirmationLinks {
@@ -78,11 +80,51 @@ impl TestApp {
     pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
         reqwest::Client::new()
             .post(&format!("{}/newsletters", &self.address))
+            // .basic_auth(Uuid::new_v4().to_string(), Some(Uuid::new_v4().to_string()))
+            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
             .json(&body)
             .send()
             .await
             .expect("Failed to execute request")
     }
+
+    // pub async fn test_user(&self) -> (String, String) {
+    //     let row = sqlx::query!("SELECT username, password FROM users LIMIT 1")
+    //         .fetch_one(&self.db_pool)
+    //         .await
+    //         .expect("Failed to fetch test user");
+    //     (row.username, row.password)
+    // }
+}
+
+pub struct TestUser {
+    pub user_id: Uuid,
+    pub username: String,
+    pub password: String,
+}
+
+impl TestUser {
+    pub fn create() -> Self {
+        Self {
+            user_id: Uuid::new_v4(),
+            username: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        }
+    }
+
+    pub async fn save(&self, pool: &PgPool) {
+        let passwd_hash = sha3::Sha3_256::digest(self.password.as_bytes());
+        let passwd_hash = format!("{:x}", passwd_hash);
+        sqlx::query!(
+            "INSERT INTO users (user_id, username, password_hash) VALUES ($1, $2, $3)",
+            self.user_id,
+            self.username,
+            passwd_hash,
+        )
+        .execute(pool)
+        .await
+        .expect("Failed to save test user");
+    }    
 }
 
 pub async fn spawn_app() -> TestApp {
@@ -108,12 +150,16 @@ pub async fn spawn_app() -> TestApp {
 
     let _ = tokio::spawn(application.run_until_stopped());
 
-    TestApp {
+    let test_app =TestApp {
         address,
         db_pool: startup::get_connection_pool(&configuration.database),
         email_server,
         port,
-    }
+        test_user: TestUser::create(),
+    };
+    test_app.test_user.save(&test_app.db_pool).await;
+    
+    test_app
 }
 
 async fn configure_database(config: &DatabaseSettings) -> PgPool {
@@ -137,3 +183,15 @@ async fn configure_database(config: &DatabaseSettings) -> PgPool {
 
     connection_pool
 }
+
+// async fn add_test_user(db_pool: &PgPool) {
+//     sqlx::query!(
+//         "INSERT INTO users (user_id, username, password) VALUES ($1, $2, $3)",
+//         Uuid::new_v4(),
+//         Uuid::new_v4().to_string(),
+//         Uuid::new_v4().to_string(),
+//     )
+//     .execute(db_pool)
+//     .await
+//     .expect("Failed to create test user");
+// }
