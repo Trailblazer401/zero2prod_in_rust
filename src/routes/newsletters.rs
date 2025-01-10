@@ -3,13 +3,12 @@ use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use actix_web::{web, HttpRequest};
 use actix_web::http::header::{HeaderMap, HeaderValue, WWW_AUTHENTICATE};
 use secrecy::{Secret, ExposeSecret};
-use sha3::Digest;
 use sqlx::PgPool;
 use crate::domain::SubscriberEmail;
 use crate::routes::error_chain_fmt;
 use crate::email_client::EmailClient;
 use anyhow::Context;
-use argon2::{Algorithm, Argon2, Params, Version};
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 
 #[derive(serde::Deserialize)]
 pub struct NewsletterBody {
@@ -177,34 +176,32 @@ async fn validate_credentials(
     credentials: Credentails,
     pool: &PgPool,
 ) -> Result<uuid::Uuid, PublishError> {
-    let hasher = Argon2::new(
-        Algorithm::Argon2id,
-        Version::V0x13,
-        Params::new(15000, 2, 1, None)
-            .context("Failed to create Argon2 parameters")
-            .map_err(PublishError::UnexpectedError)?,
-    );
-    let passwd_hash = sha3::Sha3_256::digest(
-        credentials.password.expose_secret().as_bytes()
-    );
-    let passwd_hash = format!("{:x}", passwd_hash);
-
-    let user_id = sqlx::query!(
+    let row = sqlx::query!(
         r#"
-        SELECT user_id
+        SELECT user_id, password_hash
         FROM users
-        WHERE username = $1 AND password_hash = $2
+        WHERE username = $1
         "#,
         credentials.username,
-        passwd_hash
     )
     .fetch_optional(pool)
     .await
-    .context("Failed to perform query to validate auth credentials")
+    .context("Failed to perform query to retrieve auth credentials")
     .map_err(PublishError::UnexpectedError)?;
 
-    user_id
-        .map(|row| row.user_id)
-        .ok_or_else(|| anyhow::anyhow!("Invalid username or password"))
-        .map_err(PublishError::AuthError)
+    let (expected_passwd_hash, user_id) = match row {
+        Some(row) => (row.password_hash, row.user_id),
+        None => return Err(PublishError::AuthError(anyhow::anyhow!("Invalid username"))),
+    };
+
+    let expected_passwd_hash = PasswordHash::new(&expected_passwd_hash)
+        .context("Failed to parse password hash in PHC string format.")
+        .map_err(PublishError::UnexpectedError)?;
+
+    Argon2::default()
+        .verify_password(credentials.password.expose_secret().as_bytes(), &expected_passwd_hash)
+        .context("Invalid password")
+        .map_err(PublishError::AuthError)?;
+
+    Ok(user_id)
 }
