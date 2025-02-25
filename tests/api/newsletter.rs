@@ -1,6 +1,7 @@
 //! tests/api/newsletter.rs
 
 use crate::helpers::{spawn_app, ConfirmationLinks, TestApp};
+use uuid::Uuid;
 use wiremock::matchers::{method, path, any};
 use wiremock::{Mock, ResponseTemplate};
 
@@ -147,4 +148,61 @@ async fn reject_requests_missing_authorization() {
         r#"Basic realm="publish""#,
         reponse.headers()["www-authenticate"]
     )
+}
+
+#[tokio::test]
+async fn non_existing_user_is_rejected() {
+    let app = spawn_app().await;
+
+    let username = Uuid::new_v4().to_string();
+    let password = Uuid::new_v4().to_string();
+
+    let reponse = reqwest::Client::new()
+        .post(&format!("{}/newsletters", &app.address))
+        .basic_auth(&username, Some(&password))
+        .json(&serde_json::json!({
+            "title": "newsletter title",
+            "content": {
+                "text": "newsletter content",
+                "html": "<p>newsletter content</p>"
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to execute request");
+
+    assert_eq!(401, reponse.status().as_u16());
+    assert_eq!(
+        r#"Basic realm="publish""#,
+        reponse.headers()["www-authenticate"]
+    );
+}
+
+#[tokio::test]
+async fn invalid_password_is_rejected() {
+    let app = spawn_app().await;
+    let username = &app.test_user.username;
+
+    let passwd = Uuid::new_v4().to_string();
+    assert_ne!(app.test_user.password, passwd);
+
+    let reponse = reqwest::Client::new()
+        .post(&format!("{}/newsletters", &app.address))
+        .basic_auth(username, Some("invalid password"))
+        .json(&serde_json::json!({
+            "title": "newsletter title",
+            "content": {
+                "text": "newsletter content",
+                "html": "<p>newsletter content</p>"
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to execute request");
+
+    assert_eq!(401, reponse.status().as_u16());
+    assert_eq!(
+        r#"Basic realm="publish""#,
+        reponse.headers()["www-authenticate"]
+    );
 }
