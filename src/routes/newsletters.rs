@@ -2,14 +2,15 @@
 use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use actix_web::{web, HttpRequest};
 use actix_web::http::header::{HeaderMap, HeaderValue, WWW_AUTHENTICATE};
-use secrecy::{Secret, ExposeSecret};
+use secrecy::Secret;
 use sqlx::PgPool;
 use crate::domain::SubscriberEmail;
 use crate::routes::error_chain_fmt;
 use crate::email_client::EmailClient;
-use crate::telemetry::spawn_blocking_with_tracing;
 use anyhow::Context;
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
+
+use crate::authentication::AuthError;
+use crate::authentication::{Credentails, validate_credentials};
 
 #[derive(serde::Deserialize)]
 pub struct NewsletterBody {
@@ -67,10 +68,10 @@ impl ResponseError for PublishError {
     }
 }
 
-struct Credentails {
-    username: String,
-    password: Secret<String>,
-}
+// struct Credentails {
+//     username: String,
+//     password: Secret<String>,
+// }
 
 fn basic_authentication(headers: &HeaderMap) -> Result<Credentails, anyhow::Error> {
     let authorization_header = headers
@@ -120,7 +121,11 @@ pub async fn publish_newsletter(
         .map_err(PublishError::AuthError)?;
     tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
     let user_id = validate_credentials(credentials, &pool)
-        .await?;
+        .await
+        .map_err(|e| match e {
+            AuthError::InvalidCredentials(_) => PublishError::AuthError(e.into()),
+            AuthError::UnexpectedError(_) => PublishError::UnexpectedError(e.into()),
+        })?;
     tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
     let subscribers = get_confirmed_subscribers(&pool)
         .await?;
@@ -173,84 +178,80 @@ async fn get_confirmed_subscribers(pool: &PgPool) -> Result<Vec<Result<Confirmed
     Ok(confirmed_subscribers)
 }
 
-#[tracing::instrument(
-    name = "Validate credentials",
-    skip(credentials, pool)
-)]
-async fn validate_credentials(
-    credentials: Credentails,
-    pool: &PgPool,
-) -> Result<uuid::Uuid, PublishError> {
-    let (user_id, expected_passwd_hash) = get_stored_credentials(
-        &credentials.username,
-        &pool
-    )
-    .await
-    .map_err(PublishError::UnexpectedError)?
-    .ok_or_else(|| PublishError::AuthError(anyhow::anyhow!("Invalid username")))?;
+// #[tracing::instrument(
+//     name = "Validate credentials",
+//     skip(credentials, pool)
+// )]
+// async fn validate_credentials(
+//     credentials: Credentails,
+//     pool: &PgPool,
+// ) -> Result<uuid::Uuid, AuthError> {
+//     let mut user_id = None;
+//     let mut expected_passwd_hash = Secret::new(
+//         "$argon2id$v=19$m=15000,t=2,p=1$\
+//         e3NzaWdub3cfjdfkslafdjslkjflejoi$\
+//         HIOFSOnhofdihaohfdojLSHFL/2389%&(*(^*&%$DRYTFY%&^".to_string(),
+//     );
 
-    // let expected_passwd_hash = PasswordHash::new(&expected_passwd_hash.expose_secret())
-    //     .context("Failed to parse password hash in PHC string format.")
-    //     .map_err(PublishError::UnexpectedError)?;
+//     if let Some((stored_user_id, stored_passwd_hash)) = get_stored_credentials(
+//             &credentials.username,
+//             &pool
+//         )
+//         .await?
+//     {
+//         user_id = Some(stored_user_id);
+//         expected_passwd_hash = stored_passwd_hash;
+//     }
 
-    // tracing::info_span!("Verifying passwd hash").in_scope(|| {
-    //     Argon2::default().verify_password(
-    //         credentials.password.expose_secret().as_bytes(),
-    //         &expected_passwd_hash
-    //     )
-    // })
-    // .context("Invalid password")
-    // .map_err(PublishError::AuthError)?;
+//     spawn_blocking_with_tracing(move || {
+//         verify_passwd_hash(
+//             expected_passwd_hash, 
+//             credentials.password)
+//     })
+//     .await
+//     .context("Failed to spawn blocking task")??;
 
-    spawn_blocking_with_tracing(move || {
-        verify_passwd_hash(
-            expected_passwd_hash, 
-            credentials.password)
-    })
-    .await
-    .context("Failed to spawn blocking task")
-    .map_err(PublishError::UnexpectedError)??;
+//     user_id
+//         .ok_or_else(|| anyhow::anyhow!("Invalid username"))
+//         .map_err(AuthError::InvalidCredentials)
+// }
 
-    Ok(user_id)
-}
-
-#[tracing::instrument(
-    name = "Get stored credentials",
-    skip(username, pool)
-)]
-async fn get_stored_credentials(username: &str, pool: &PgPool) -> Result<Option<(uuid::Uuid, Secret<String>)>, anyhow::Error> {
-    let row = sqlx::query!(
-        r#"
-        SELECT user_id, password_hash
-        FROM users
-        WHERE username = $1
-        "#,
-        username,
-    )
-    .fetch_optional(pool)
-    .await
-    .context("Failed to retrieve stored credentials")?
-    .map(|row| (row.user_id, Secret::new(row.password_hash)));
+// #[tracing::instrument(
+//     name = "Get stored credentials",
+//     skip(username, pool)
+// )]
+// async fn get_stored_credentials(username: &str, pool: &PgPool) -> Result<Option<(uuid::Uuid, Secret<String>)>, anyhow::Error> {
+//     let row = sqlx::query!(
+//         r#"
+//         SELECT user_id, password_hash
+//         FROM users
+//         WHERE username = $1
+//         "#,
+//         username,
+//     )
+//     .fetch_optional(pool)
+//     .await
+//     .context("Failed to retrieve stored credentials")?
+//     .map(|row| (row.user_id, Secret::new(row.password_hash)));
     
-    Ok(row)
-}
+//     Ok(row)
+// }
 
-#[tracing::instrument(
-    name = "Verify passwd hash",
-    skip(expected_passwd_hash, passwd_candidate)
-)]
-fn verify_passwd_hash(
-    expected_passwd_hash: Secret<String>,
-    passwd_candidate: Secret<String>,
-) -> Result<(), PublishError> {
-    let expected_passwd_hash = PasswordHash::new(expected_passwd_hash.expose_secret())
-        .context("Failed to parse password hash in PHC string format.")
-        .map_err(PublishError::UnexpectedError)?;
+// #[tracing::instrument(
+//     name = "Verify passwd hash",
+//     skip(expected_passwd_hash, passwd_candidate)
+// )]
+// fn verify_passwd_hash(
+//     expected_passwd_hash: Secret<String>,
+//     passwd_candidate: Secret<String>,
+// ) -> Result<(), AuthError> {
+//     let expected_passwd_hash = PasswordHash::new(expected_passwd_hash.expose_secret())
+//         .context("Failed to parse password hash in PHC string format.")?;
 
-    Argon2::default().verify_password(
-        passwd_candidate.expose_secret().as_bytes(), 
-        &expected_passwd_hash,
-    )
-    .context("Invalid password")
-    .map_err(PublishError::AuthError)
-}
+//     Argon2::default().verify_password(
+//         passwd_candidate.expose_secret().as_bytes(), 
+//         &expected_passwd_hash,
+//     )
+//     .context("Invalid password")
+//     .map_err(AuthError::InvalidCredentials)
+// }

@@ -7,7 +7,7 @@ use actix_web::{
     web, 
     dev::Server
 };
-use crate::{configurations::{DatabaseSettings, Settings}, routes::{confirm, health_check, publish_newsletter, subscribe}};
+use crate::{configurations::{DatabaseSettings, Settings}, routes::{confirm, health_check, publish_newsletter, subscribe, home, login_form,login}};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tracing_actix_web::TracingLogger;
 use crate::email_client::EmailClient;
@@ -93,6 +93,9 @@ pub fn run(
             .route("/subscriptions", web::post().to(subscribe))
             .route("/subscriptions/confirm", web::get().to(confirm))
             .route("/newsletters", web::post().to(publish_newsletter))
+            .route("/", web::get().to(home))
+            .route("/login", web::get().to(login_form))
+            .route("/login", web::post().to(login))
             // 使用app_data方法将PgPool(PgConnection)连接对象注册为该App实例的一部分，这里使用Arc实现clone trait，以使连接对每一个App实例可克隆
             .app_data(db_pool.clone())    
             .app_data(email_client.clone())

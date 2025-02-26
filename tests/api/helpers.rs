@@ -1,6 +1,6 @@
 //! tests/api/helpers.rs
 
-use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
+use argon2::{password_hash::SaltString, Algorithm, Argon2, Params, PasswordHasher, Version};
 use uuid::Uuid;
 use wiremock::MockServer;
 use zero2prod::configurations::{get_configuration, DatabaseSettings};
@@ -114,7 +114,11 @@ impl TestUser {
 
     pub async fn save(&self, pool: &PgPool) {
         let salt = SaltString::generate(&mut rand::thread_rng());
-        let passwd_hash = Argon2::default()
+        let passwd_hash = Argon2::new(
+            Algorithm::Argon2id,
+            Version::V0x13,
+            Params::new(15000, 2,1, None).unwrap(),
+        )
             .hash_password(self.password.as_bytes(), &salt)
             .unwrap()
             .to_string();
