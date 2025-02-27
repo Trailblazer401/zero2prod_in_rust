@@ -30,13 +30,13 @@ pub async fn validate_credentials(
     let mut user_id = None;
     let mut expected_passwd_hash = Secret::new(
         "$argon2id$v=19$m=15000,t=2,p=1$\
-        e3NzaWdub3cfjdfkslafdjslkjflejoi$\
-        HIOFSOnhofdihaohfdojLSHFL/2389%&(*(^*&%$DRYTFY%&^".to_string(),
+        gZiV/M1gPc22ElAH/Jh1Hw$\
+        CWOrkoo7oJBQ/iyh7uJ0LO2aLEfrHwTWllSAxT0zRno".to_string(),
     );
 
     if let Some((stored_user_id, stored_passwd_hash)) = get_stored_credentials(
             &credentials.username,
-            &pool
+            pool
         )
         .await?
         // .map_err(PublishError::UnexpectedError)?

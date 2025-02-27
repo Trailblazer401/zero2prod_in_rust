@@ -7,10 +7,11 @@ use actix_web::{
     web, 
     dev::Server
 };
-use crate::{configurations::{DatabaseSettings, Settings}, routes::{confirm, health_check, publish_newsletter, subscribe, home, login_form,login}};
+use crate::{configurations::{DatabaseSettings, Settings}, routes::{confirm, health_check, publish_newsletter, subscribe, home, login_form, login}};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tracing_actix_web::TracingLogger;
 use crate::email_client::EmailClient;
+use secrecy::Secret;
 
 pub struct Application {
     port: u16,
@@ -47,6 +48,7 @@ impl Application {
             connection_pool, 
             email_client,
             configuration.application.base_url,
+            HmacSecret(configuration.application.hmac_secret),
         )?;
 
         Ok(Self {port, server})
@@ -69,11 +71,15 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
 
 pub struct ApplicationBaseUrl(pub String);
 
+#[derive(Clone)]
+pub struct HmacSecret(pub Secret<String>);
+
 pub fn run(
     listener: TcpListener, 
     db_pool: PgPool, 
     email_client: EmailClient, 
-    base_url: String
+    base_url: String,
+    hmac_secret: HmacSecret,
 ) -> Result<Server, std::io::Error> {
     // 此处使用智能指针（计数指针Arc）包装connection，这使得原本不具有clone trait的PgPool（PgConnection）类型通过Arc计数指针实现可克隆性质，每次克隆使得Arc计数+1
     let db_pool = web::Data::new(db_pool);    
@@ -100,6 +106,7 @@ pub fn run(
             .app_data(db_pool.clone())    
             .app_data(email_client.clone())
             .app_data(base_url.clone())
+            .app_data(web::Data::new(hmac_secret.clone()))
     })    
     .listen(listener)?    
     // 此处 ? 运算的对象是由bind函数运行返回的 Result<Self> 即 Result<HttpServer, E>，绑定成功则 Result<Self> 会是 Ok(HttpServer)，则该链式调用继续执行run方法；

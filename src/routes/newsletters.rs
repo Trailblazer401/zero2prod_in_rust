@@ -8,6 +8,7 @@ use crate::domain::SubscriberEmail;
 use crate::routes::error_chain_fmt;
 use crate::email_client::EmailClient;
 use anyhow::Context;
+use base64::Engine;
 
 use crate::authentication::AuthError;
 use crate::authentication::{Credentails, validate_credentials};
@@ -82,7 +83,8 @@ fn basic_authentication(headers: &HeaderMap) -> Result<Credentails, anyhow::Erro
     let base64encoded = authorization_header
         .strip_prefix("Basic ")
         .context("Invalid authorization header: not 'Basic' scheme")?;
-    let decoded_bytes = base64::decode_config(base64encoded, base64::STANDARD)
+    // let decoded_bytes = base64::decode_config(base64encoded, base64::STANDARD)
+    let decoded_bytes = base64::engine::general_purpose::STANDARD.decode(base64encoded)
         .context("Failed to decode base64-encoded 'Basic' credentials")?;
     let decoded_credentials = String::from_utf8(decoded_bytes)
         .context("Decoded credentials are not valid UTF-8")?;
