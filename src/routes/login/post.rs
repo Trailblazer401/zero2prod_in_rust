@@ -1,15 +1,17 @@
 //! src/routes/login/post.rs
 
+use actix_web::cookie::Cookie;
 use actix_web::error::InternalError;
 use actix_web::{web, HttpResponse};
 use actix_web::http::header::LOCATION;
+use actix_web_flash_messages::FlashMessage;
 use secrecy::{Secret, ExposeSecret};
 use sqlx::PgPool;
-use hmac::{Hmac, Mac};
+// use hmac::{Hmac, Mac};
 
 use crate::authentication::{validate_credentials, AuthError, Credentails};
 use crate::routes::error_chain_fmt;
-use crate::startup::HmacSecret;
+// use crate::startup::HmacSecret;
 
 #[derive(serde::Deserialize)]
 pub struct FormData {
@@ -59,7 +61,7 @@ impl std::fmt::Debug for LoginError {
 
 #[tracing::instrument(
     name = "Logging in",
-    skip(form, pool, secret),
+    skip(form, pool),
     fields(
         username = tracing::field::Empty,
         user_id = tracing::field::Empty,
@@ -68,7 +70,7 @@ impl std::fmt::Debug for LoginError {
 pub async fn login(
     form: web::Form<FormData>, 
     pool: web::Data<PgPool>,
-    secret: web::Data<HmacSecret>,
+    // secret: web::Data<HmacSecret>,
 ) -> Result<HttpResponse, InternalError<LoginError>> {
     let credential = Credentails {
         username: form.0.username,
@@ -93,19 +95,22 @@ pub async fn login(
                 AuthError::InvalidCredentials(_) => LoginError::AuthError(e.into()),
                 AuthError::UnexpectedError(_) => LoginError::UnexpectedError(e.into()),
             };
-            let query_string = format!("error={}", urlencoding::Encoded::new(e.to_string()));
-            let hmac_tag = {
-                let mut mac = Hmac::<sha2::Sha256>::new_from_slice(
-                    secret.0.expose_secret().as_bytes()
-                ).unwrap();
-                mac.update(query_string.as_bytes());
-                mac.finalize().into_bytes()
-            };
+            // let query_string = format!("error={}", urlencoding::Encoded::new(e.to_string()));
+            // let hmac_tag = {
+            //     let mut mac = Hmac::<sha2::Sha256>::new_from_slice(
+            //         secret.0.expose_secret().as_bytes()
+            //     ).unwrap();
+            //     mac.update(query_string.as_bytes());
+            //     mac.finalize().into_bytes()
+            // };
+            FlashMessage::error(e.to_string()).send();
             let response = HttpResponse::SeeOther()
                 .insert_header((
                     LOCATION, 
-                    format!("/login?{}&tag={:x}", query_string, hmac_tag),
+                    // format!("/login?{}&tag={:x}", query_string, hmac_tag),
+                    "/login",
                 ))
+                // .cookie(Cookie::new("_flash", e.to_string()))
                 .finish();
             Err(InternalError::from_response(e, response))
         }

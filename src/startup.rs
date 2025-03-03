@@ -2,16 +2,14 @@
 
 use std::net::TcpListener;
 use actix_web::{
-    HttpServer, 
-    App, 
-    web, 
-    dev::Server
+    cookie::Key, dev::Server, web, App, HttpServer
 };
 use crate::{configurations::{DatabaseSettings, Settings}, routes::{confirm, health_check, publish_newsletter, subscribe, home, login_form, login}};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tracing_actix_web::TracingLogger;
 use crate::email_client::EmailClient;
-use secrecy::Secret;
+use secrecy::{Secret, ExposeSecret};
+use actix_web_flash_messages::{storage::CookieMessageStore, FlashMessagesFramework};
 
 pub struct Application {
     port: u16,
@@ -48,7 +46,7 @@ impl Application {
             connection_pool, 
             email_client,
             configuration.application.base_url,
-            HmacSecret(configuration.application.hmac_secret),
+            configuration.application.hmac_secret,
         )?;
 
         Ok(Self {port, server})
@@ -71,15 +69,15 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
 
 pub struct ApplicationBaseUrl(pub String);
 
-#[derive(Clone)]
-pub struct HmacSecret(pub Secret<String>);
+// #[derive(Clone)]
+// pub struct HmacSecret(pub Secret<String>);
 
 pub fn run(
     listener: TcpListener, 
     db_pool: PgPool, 
     email_client: EmailClient, 
     base_url: String,
-    hmac_secret: HmacSecret,
+    hmac_secret: Secret<String>,
 ) -> Result<Server, std::io::Error> {
     // 此处使用智能指针（计数指针Arc）包装connection，这使得原本不具有clone trait的PgPool（PgConnection）类型通过Arc计数指针实现可克隆性质，每次克隆使得Arc计数+1
     let db_pool = web::Data::new(db_pool);    
@@ -87,10 +85,13 @@ pub fn run(
     let base_url = web::Data::new(ApplicationBaseUrl(base_url));
     // 此处 HttpServer::new(|| {...}) 中使用闭包进行参数传递，|...| 表示闭包的参数列表，该处没有传入闭包的参数，故参数列表为空（ || )，
     // {...}表示闭包的实现体，包含闭包的执行逻辑，该闭包返回一个配置了路由的App实例
+    let message_store = CookieMessageStore::builder(Key::from(hmac_secret.expose_secret().as_bytes())).build();
+    let message_framework = FlashMessagesFramework::builder(message_store).build();
     let server = HttpServer::new(move || {    // 使用 move 将外部变量（此处是 db_pool和email client）的所有权转移到闭包内部，以期能在闭包内部安全地调用其clone方法
         App::new()    // 使用闭包而不是直接使用App类型作为HttpServer::new方法的参数，为每一个http连接调用一次闭包实例化一个App对象，使得来自不同客户端的连接实现隔离
             // .wrap(Logger::default())
             .wrap(TracingLogger::default())
+            .wrap(message_framework.clone())
             // .route("/", web::get().to(greet))
             // .route("/{name}", web::get().to(greet))    
             // {name} 是一占位符，在客户端访问某URL路径时（如“/John”）匹配路径中的实际值。通过制定路由route("/{name}")，actix web在处理对应路由请求时会自动从路径中提取name参数，
