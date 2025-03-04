@@ -1,16 +1,17 @@
 //! src/routes/login/post.rs
 
-use actix_web::cookie::Cookie;
+// use actix_web::cookie::Cookie;
 use actix_web::error::InternalError;
 use actix_web::{web, HttpResponse};
 use actix_web::http::header::LOCATION;
 use actix_web_flash_messages::FlashMessage;
-use secrecy::{Secret, ExposeSecret};
 use sqlx::PgPool;
+use secrecy::Secret;
 // use hmac::{Hmac, Mac};
 
 use crate::authentication::{validate_credentials, AuthError, Credentails};
 use crate::routes::error_chain_fmt;
+use crate::session_state::TypedSession;
 // use crate::startup::HmacSecret;
 
 #[derive(serde::Deserialize)]
@@ -61,7 +62,7 @@ impl std::fmt::Debug for LoginError {
 
 #[tracing::instrument(
     name = "Logging in",
-    skip(form, pool),
+    skip(form, pool, session),
     fields(
         username = tracing::field::Empty,
         user_id = tracing::field::Empty,
@@ -71,6 +72,7 @@ pub async fn login(
     form: web::Form<FormData>, 
     pool: web::Data<PgPool>,
     // secret: web::Data<HmacSecret>,
+    session: TypedSession,
 ) -> Result<HttpResponse, InternalError<LoginError>> {
     let credential = Credentails {
         username: form.0.username,
@@ -88,7 +90,11 @@ pub async fn login(
     match validate_credentials(credential, &pool).await {
         Ok(user_id) => {
             tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
-            Ok(HttpResponse::SeeOther().insert_header((LOCATION, "/")).finish())
+            session.renew();
+            session
+                .insert_user_id(user_id)
+                .map_err(|e| login_redirect(LoginError::UnexpectedError(e.into())))?;
+            Ok(HttpResponse::SeeOther().insert_header((LOCATION, "/admin/dashboard")).finish())
         }
         Err(e) => {
             let e = match e {
@@ -103,17 +109,22 @@ pub async fn login(
             //     mac.update(query_string.as_bytes());
             //     mac.finalize().into_bytes()
             // };
-            FlashMessage::error(e.to_string()).send();
-            let response = HttpResponse::SeeOther()
-                .insert_header((
-                    LOCATION, 
-                    // format!("/login?{}&tag={:x}", query_string, hmac_tag),
-                    "/login",
-                ))
-                // .cookie(Cookie::new("_flash", e.to_string()))
-                .finish();
-            Err(InternalError::from_response(e, response))
+
+            Err(login_redirect(e))
         }
     }
     // Ok(HttpResponse::SeeOther().insert_header((LOCATION, "/")).finish())
+}
+
+fn login_redirect(e: LoginError) -> InternalError<LoginError> {
+    FlashMessage::error(e.to_string()).send();
+    let response = HttpResponse::SeeOther()
+        .insert_header((
+            LOCATION, 
+            // format!("/login?{}&tag={:x}", query_string, hmac_tag),
+            "/login",
+        ))
+        // .cookie(Cookie::new("_flash", e.to_string()))
+        .finish();
+    InternalError::from_response(e, response)
 }
