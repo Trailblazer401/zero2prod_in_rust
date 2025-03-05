@@ -143,6 +143,29 @@ impl TestApp {
             .await
             .unwrap()
     }
+
+    pub async fn get_change_password(&self) -> reqwest::Response {
+        self.api_client
+            .get(&format!("{}/admin/password", &self.address))
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+
+    pub async fn post_change_password<Body>(&self, body: &Body) -> reqwest::Response 
+        where Body: serde::Serialize,
+    {
+        self.api_client
+            .post(&format!("{}/admin/password", &self.address))
+            .form(body)
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+
+    pub async fn get_change_password_html(&self) -> String {
+        self.get_change_password().await.text().await.unwrap()
+    }
 }
 
 pub struct TestUser {
@@ -157,6 +180,7 @@ impl TestUser {
             user_id: Uuid::new_v4(),
             username: Uuid::new_v4().to_string(),
             password: Uuid::new_v4().to_string(),
+            // password: "everythinghastostartsomewhere".into(),
         }
     }
 
@@ -170,6 +194,7 @@ impl TestUser {
             .hash_password(self.password.as_bytes(), &salt)
             .unwrap()
             .to_string();
+        // dbg!(&passwd_hash);
         sqlx::query!(
             "INSERT INTO users (user_id, username, password_hash) VALUES ($1, $2, $3)",
             self.user_id,
@@ -179,6 +204,7 @@ impl TestUser {
         .execute(pool)
         .await
         .expect("Failed to save test user");
+        
     }    
 }
 
