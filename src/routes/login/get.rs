@@ -13,10 +13,34 @@ pub async fn login_form(
     //         format!("<p><i>{}</i></p>", cookie.value())
     //     }
     // };
-    let mut error_html = String::new();
-    for m in flash_messages.iter().filter(|m| m.level() == Level::Error) {
-        writeln!(error_html, "<p><i>{}</i></p>", m.content()).unwrap();
+    let mut error_msg = String::new();
+    for m in flash_messages.iter().filter(|m| m.level() == Level::Error || m.level() == Level::Info) {
+        writeln!(error_msg, "<p><i>{}</i></p>", m.content()).unwrap();
     }
+
+    let html = format!(
+        r#"
+        <!DOCTYPE html>
+        <html lang="en">
+            <head>
+                <meta http-equiv="content-type" content="text/html"; charset="UTF-8">
+                <title>Login</title>
+            </head>
+            <body>
+                {error_msg}
+                <form action="/login" method="POST">
+                    <label>Username
+                        <input type="text" placeholder="Enter username" name="username" required>
+                    </label>
+                    
+                    <label>Password
+                        <input type="password" placeholder="Enter password" name="password" required>
+                    </label>
+                    <button type="submit">Login</button>
+                </form>
+            </body>
+        </html>
+        "#,);
 
     HttpResponse::Ok()
         .content_type(ContentType::html())
@@ -25,34 +49,6 @@ pub async fn login_form(
         //         .max_age(Duration::ZERO)
         //         .finish(),
         // )
-        // .body(html)
-        .body(format!(
-            r#"
-            <!DOCTYPE html>
-            <html lang="en">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <meta http-equiv="content-type" content="text/html"; charset="UTF-8">
-                    <title>Login</title>
-                </head>
-                <body>
-                    {error_html}
-                    <form action="/login" method="POST">
-                        <label>Username
-                            <input type="text" placeholder="Enter username" name="username" required>
-                        </label>
-                        
-                        <label>Password
-                            <input type="password" placeholder="Enter password" name="password" required>
-                        </label>
-                        <button type="submit">Login</button>
-                    </form>
-                </body>
-            </html>
-            "#,
-        ))
-        // reponse.add_removal_cookie(&Cookie::new("_flash", "")).unwrap();
+        .body(html)
 
-        // reponse
 }

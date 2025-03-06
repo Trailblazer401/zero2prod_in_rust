@@ -16,6 +16,7 @@ use crate::{
         subscribe,
         change_password,
         change_password_form,
+        log_out,
     }};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tracing_actix_web::TracingLogger;
@@ -110,6 +111,7 @@ async fn run(
             .wrap(TracingLogger::default())
             .wrap(message_framework.clone())
             .wrap(SessionMiddleware::builder(redis_store.clone(), secret_key.clone()).cookie_secure(false).build())
+            // .wrap(SessionMiddleware::new(redis_store.clone(), secret_key.clone()))
             // .route("/", web::get().to(greet))
             // .route("/{name}", web::get().to(greet))    
             // {name} 是一占位符，在客户端访问某URL路径时（如“/John”）匹配路径中的实际值。通过制定路由route("/{name}")，actix web在处理对应路由请求时会自动从路径中提取name参数，
@@ -124,6 +126,7 @@ async fn run(
             .route("/admin/dashboard", web::get().to(admin_dashboard))
             .route("/admin/password", web::get().to(change_password_form))
             .route("/admin/password", web::post().to(change_password))
+            .route("/admin/logout", web::post().to(log_out))
             // 使用app_data方法将PgPool(PgConnection)连接对象注册为该App实例的一部分，这里使用Arc实现clone trait，以使连接对每一个App实例可克隆
             .app_data(db_pool.clone())    
             .app_data(email_client.clone())

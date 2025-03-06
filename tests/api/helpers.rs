@@ -166,6 +166,14 @@ impl TestApp {
     pub async fn get_change_password_html(&self) -> String {
         self.get_change_password().await.text().await.unwrap()
     }
+
+    pub async fn post_logout(&self) -> reqwest::Response {
+        self.api_client
+            .post(&format!("{}/admin/logout", &self.address))
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
 }
 
 pub struct TestUser {
@@ -284,7 +292,7 @@ async fn configure_database(config: &DatabaseSettings) -> PgPool {
 //     .expect("Failed to create test user");
 // }
 
-pub fn assert_is_redirect_to(reponse: &reqwest::Response, location: &str) {
-    assert_eq!(reponse.status().as_u16(), 303);
-    assert_eq!(reponse.headers().get("Location").unwrap(), location);
+pub fn assert_is_redirect_to(response: &reqwest::Response, location: &str) {
+    assert_eq!(response.status().as_u16(), 303);
+    assert_eq!(response.headers().get("Location").unwrap(), location);
 }
