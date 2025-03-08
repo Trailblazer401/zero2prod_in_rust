@@ -1,4 +1,4 @@
-//! src/authentication.rs
+//! src/authentication/password.rs
 
 use secrecy::{Secret, ExposeSecret};
 use sqlx::PgPool;

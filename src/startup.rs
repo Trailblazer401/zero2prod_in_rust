@@ -17,13 +17,16 @@ use crate::{
         change_password,
         change_password_form,
         log_out,
-    }};
+    },
+    authentication::reject_anonymous_users,
+};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tracing_actix_web::TracingLogger;
 use crate::email_client::EmailClient;
 use secrecy::{Secret, ExposeSecret};
 use actix_web_flash_messages::{storage::CookieMessageStore, FlashMessagesFramework};
 use actix_session::{storage::RedisSessionStore, SessionMiddleware};
+use actix_web_lab::middleware::from_fn;
 
 pub struct Application {
     port: u16,
@@ -123,10 +126,13 @@ async fn run(
             .route("/", web::get().to(home))
             .route("/login", web::get().to(login_form))
             .route("/login", web::post().to(login))
-            .route("/admin/dashboard", web::get().to(admin_dashboard))
-            .route("/admin/password", web::get().to(change_password_form))
-            .route("/admin/password", web::post().to(change_password))
-            .route("/admin/logout", web::post().to(log_out))
+            .service(web::scope("/admin")
+                .wrap(from_fn(reject_anonymous_users))
+                .route("/dashboard", web::get().to(admin_dashboard))
+                .route("/password", web::get().to(change_password_form))
+                .route("/password", web::post().to(change_password))
+                .route("/logout", web::post().to(log_out)),
+            )          
             // 使用app_data方法将PgPool(PgConnection)连接对象注册为该App实例的一部分，这里使用Arc实现clone trait，以使连接对每一个App实例可克隆
             .app_data(db_pool.clone())    
             .app_data(email_client.clone())

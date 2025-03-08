@@ -7,7 +7,7 @@ use uuid::Uuid;
 use anyhow::Context;
 
 use crate::session_state::TypedSession;
-use crate::utils::{e500, see_other};
+use crate::utils::e500;
 
 pub async fn admin_dashboard(
     session: TypedSession,
