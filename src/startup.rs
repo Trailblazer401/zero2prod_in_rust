@@ -12,7 +12,8 @@ use crate::{
         health_check, 
         home, login, 
         login_form, 
-        publish_newsletter, 
+        publish_newsletter,
+        publish_newsletter_form, 
         subscribe,
         change_password,
         change_password_form,
@@ -131,7 +132,9 @@ async fn run(
                 .route("/dashboard", web::get().to(admin_dashboard))
                 .route("/password", web::get().to(change_password_form))
                 .route("/password", web::post().to(change_password))
-                .route("/logout", web::post().to(log_out)),
+                .route("/logout", web::post().to(log_out))
+                .route("/newsletters", web::get().to(publish_newsletter_form))
+                .route("/newsletters", web::post().to(publish_newsletter))
             )          
             // 使用app_data方法将PgPool(PgConnection)连接对象注册为该App实例的一部分，这里使用Arc实现clone trait，以使连接对每一个App实例可克隆
             .app_data(db_pool.clone())    

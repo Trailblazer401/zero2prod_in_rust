@@ -5,7 +5,7 @@ use actix_web_flash_messages::FlashMessage;
 use secrecy::{ExposeSecret, Secret};
 use sqlx::PgPool;
 
-use crate::{authentication::{validate_credentials, AuthError, Credentails}, session_state::TypedSession, utils::{e500, see_other}};
+use crate::{authentication::{validate_credentials, AuthError, Credentails}, utils::{e500, see_other}};
 use crate::routes::admin::dashboard::get_username;
 use crate::authentication::UserId;
 
