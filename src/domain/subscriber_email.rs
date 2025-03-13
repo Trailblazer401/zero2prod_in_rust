@@ -1,13 +1,13 @@
 //! src/domain/subscriber_email.rs
 
-use validator::validate_email;
+use validator::ValidateEmail;
 
 #[derive(Debug, Clone)]
 pub struct SubscriberEmail(String); // 元祖结构体，直接用索引访问值（.0）
 
 impl SubscriberEmail {
     pub fn parse(s: String) -> Result<SubscriberEmail, String> {
-        if validate_email(&s) {
+        if s.validate_email() {
             Ok(Self(s))
         } else {
             Err(format!("{} is not a valid subscriber email", s))
@@ -33,6 +33,8 @@ impl std::fmt::Display for SubscriberEmail {
 mod tests {
     use fake::faker::internet::en::SafeEmail;
     use fake::Fake;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
     // use claim::assert_err;
 
     use crate::domain::SubscriberEmail;
@@ -41,8 +43,9 @@ mod tests {
     struct ValidEmailFixture(pub String);
 
     impl quickcheck::Arbitrary for ValidEmailFixture {
-        fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> Self {
-            let email = SafeEmail().fake_with_rng(g);
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            let mut rng = StdRng::seed_from_u64(u64::arbitrary(g));
+            let email = SafeEmail().fake_with_rng(&mut rng);
             Self(email)
         }
     }

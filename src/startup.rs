@@ -27,7 +27,7 @@ use crate::email_client::EmailClient;
 use secrecy::{Secret, ExposeSecret};
 use actix_web_flash_messages::{storage::CookieMessageStore, FlashMessagesFramework};
 use actix_session::{storage::RedisSessionStore, SessionMiddleware};
-use actix_web_lab::middleware::from_fn;
+use actix_web::middleware::from_fn;
 
 pub struct Application {
     port: u16,

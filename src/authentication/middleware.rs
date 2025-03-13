@@ -1,6 +1,6 @@
 //! src/authentication/middleware.rs
 
-use actix_web_lab::middleware::Next;
+use actix_web::middleware::Next;
 use actix_web::body::MessageBody;
 use actix_web::dev::{ServiceRequest, ServiceResponse};
 use actix_web::FromRequest;
@@ -43,7 +43,7 @@ pub async fn reject_anonymous_users(
             req.extensions_mut().insert(UserId(user_id));
             next.call(req).await
         }
-        
+
         None => {
             let response = see_other("/login");
             let e = anyhow::anyhow!("The user has not logged in.");

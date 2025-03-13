@@ -240,36 +240,8 @@ impl std::fmt::Debug for SubscribeError {
     }
 }
 
-// impl std::fmt::Display for SubscribeError {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             SubscribeError::ValidationError(e) => write!(f, "{}", e),
-//             // SubscribeError::DatabaseError(_) => write!(f, "_"),
-//             SubscribeError::PoolError(_) => write!(f, "Failed to acquire Pg connection from the pool."),
-//             SubscribeError::InsertSubscriberError(_) => write!(f, "Failed to insert new subscriber into database."),
-//             SubscribeError::TransactionCommitError(_) => write!(f, "Failed to commit SQL transaction to store a new subscriber."),
-//             SubscribeError::SendEmailError(_) => write!(f, "Failed to send a confirmation email."),
-//             SubscribeError::StoreTokenError(_) => write!(f, "Failed to store the confirmation token for new subscriber."),
-//         }
-//     }
-// }
-
-// impl std::error::Error for SubscribeError {
-//     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-//         match self {
-//             SubscribeError::ValidationError(_) => None,
-//             // SubscribeError::DatabaseError(e) => Some(e),
-//             SubscribeError::PoolError(e) => Some(e),
-//             SubscribeError::InsertSubscriberError(e) => Some(e),
-//             SubscribeError::TransactionCommitError(e) => Some(e),
-//             SubscribeError::SendEmailError(e) => Some(e),
-//             SubscribeError::StoreTokenError(e) => Some(e),
-//         }
-//     }
-// }
-
 impl ResponseError for SubscribeError {
-    fn status_code(&self) -> reqwest::StatusCode {
+    fn status_code(&self) -> StatusCode {
         match self {
             SubscribeError::ValidationError(_) => StatusCode::BAD_REQUEST,
 
@@ -283,27 +255,3 @@ impl ResponseError for SubscribeError {
         }
     }
 }
-
-// impl From<reqwest::Error> for SubscribeError {
-//     fn from(value: reqwest::Error) -> Self {
-//         Self::SendEmailError(value)
-//     }
-// }
-
-// // impl From<sqlx::Error> for SubscribeError {
-// //     fn from(value: sqlx::Error) -> Self {
-// //         Self::DatabaseError(value)
-// // //     }
-// // }
-
-// impl From<StoreTokenError> for SubscribeError {
-//     fn from(value: StoreTokenError) -> Self {
-//         Self::StoreTokenError(value)
-//     }
-// }
-
-// impl From<String> for SubscribeError {
-//     fn from(value: String) -> Self {
-//         Self::ValidationError(value)
-//     }
-// }

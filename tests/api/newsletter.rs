@@ -190,4 +190,5 @@ async fn concurrent_form_submission_is_handled_gracefully() {
     assert_eq!(response1.status(), response2.status());
 
     assert_eq!(response1.text().await.unwrap(), response2.text().await.unwrap());
+    // app.dispatch_all_pending_emails().await;
 }

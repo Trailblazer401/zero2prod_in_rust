@@ -7,11 +7,12 @@ use zero2prod::configurations::{get_configuration, DatabaseSettings};
 // use sqlx::{PgConnection, Connection};
 use sqlx::{Connection, PgConnection, PgPool, Executor};
 use zero2prod::telemetry::{get_subscriber, init_subscriber};
-use once_cell::sync::Lazy;
+// use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use zero2prod::startup;
 // use secrecy::ExposeSecret;
 
-static TRACING: Lazy<()> = Lazy::new(|| {
+static TRACING: LazyLock<()> = LazyLock::new(|| {
     let default_filter_level = "info".to_string();
     // let subscriber = get_subscriber("test".into(), "debug".into());
     // init_subscriber(subscriber);
@@ -51,53 +52,6 @@ impl TestApp {
             .expect("Failed to execute request")
     }
 
-    // pub fn get_confirmation_links(
-    //     &self,
-    //     email_request: &wiremock::Request,
-    // ) -> ConfirmationLinks {
-    //     let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
-
-    //     let get_link = |s: &str| {
-    //         let links: Vec<_> = linkify::LinkFinder::new()
-    //             .links(s)
-    //             .filter(|l| *l.kind() == linkify::LinkKind::Url)
-    //             .collect();
-    //         assert_eq!(links.len(), 1);
-    //         let raw_link = links[0].as_str().to_owned();
-    //         let mut confirmation_link = reqwest::Url::parse(&raw_link).unwrap();
-    //         assert_eq!(confirmation_link.host_str().unwrap(), "127.0.0.1");
-    //         confirmation_link.set_port(Some(self.port)).unwrap();
-    //         confirmation_link
-    //     };
-
-    //     let html = get_link(&body["HtmlBody"].as_str().unwrap());
-    //     let plain_text = get_link(&body["TextBody"].as_str().unwrap());
-
-    //     ConfirmationLinks {
-    //         html,
-    //         plain_text,
-    //     }
-    // }
-
-    // pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
-    //     // reqwest::Client::new()
-    //     self.api_client
-    //         .post(&format!("{}/newsletters", &self.address))
-    //         // .basic_auth(Uuid::new_v4().to_string(), Some(Uuid::new_v4().to_string()))
-    //         .basic_auth(&self.test_user.username, Some(&self.test_user.password))
-    //         .json(&body)
-    //         .send()
-    //         .await
-    //         .expect("Failed to execute request")
-    // }
-
-    // pub async fn test_user(&self) -> (String, String) {
-    //     let row = sqlx::query!("SELECT username, password FROM users LIMIT 1")
-    //         .fetch_one(&self.db_pool)
-    //         .await
-    //         .expect("Failed to fetch test user");
-    //     (row.username, row.password)
-    // }
 
     pub async fn post_login<Body>(&self, body: &Body) -> reqwest::Response
     where
@@ -274,7 +228,7 @@ impl TestUser {
 }
 
 pub async fn spawn_app() -> TestApp {
-    Lazy::force(&TRACING);
+    LazyLock::force(&TRACING);
     // zero2prod::run().await
 
     let email_server = MockServer::start().await;

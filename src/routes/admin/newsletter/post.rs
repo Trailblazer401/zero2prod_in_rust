@@ -9,7 +9,8 @@ use actix_web_flash_messages::FlashMessage;
 use anyhow::Context;
 use sqlx::PgPool;
 
-use crate::idempotency::saved_response;
+use crate::idempotency::save_response;
+use crate::idempotency::{NextAction, try_processing};
 
 #[derive(serde::Deserialize)]
 pub struct FormData {
@@ -34,10 +35,17 @@ pub async fn publish_newsletter(
     let FormData { title, text_content, html_content, idempotency_key} = form.0;
     let idempotency_key: IdempotencyKey = idempotency_key.try_into().map_err(e400)?;
     // return if there is response in db
-    if let Some(saved_response) = get_saved_response(&pool, &idempotency_key, *user_id).await.map_err(e500)? {
-        FlashMessage::info("The newsletter issue has been published!").send();
-        return Ok(saved_response);
-    }
+    // if let Some(saved_response) = get_saved_response(&pool, &idempotency_key, *user_id).await.map_err(e500)? {
+    //     FlashMessage::info("The newsletter issue has been published!").send();
+    //     return Ok(saved_response);
+    // }
+    let transaction = match try_processing(&pool, &idempotency_key, *user_id).await.map_err(e500)? {
+        NextAction::StartProcessing(t) => t,
+        NextAction::ReturnSavedResponse(saved_response) => {
+            success_message().send();
+            return Ok(saved_response);
+        }
+    };
 
     let subscribers = get_confirmed_subscribers(&pool).await.map_err(e500)?;
     for subscriber in subscribers {
@@ -65,9 +73,10 @@ pub async fn publish_newsletter(
             }
         }
     }
-    FlashMessage::info("The newsletter issue has been published!").send();
+    // FlashMessage::info("The newsletter issue has been published!").send();
+    success_message().send();
     let response = see_other("/admin/newsletters");
-    let response = saved_response(&pool, &idempotency_key, *user_id, response)
+    let response = save_response(transaction, &idempotency_key, *user_id, response)
         .await
         .map_err(e500)?;
     Ok(response)
@@ -97,4 +106,8 @@ async fn get_confirmed_subscribers(
     })
     .collect();
     Ok(confirmed_subscribers)
+}
+
+fn success_message() -> FlashMessage {
+    FlashMessage::info("The newsletter issue has been published!")
 }
