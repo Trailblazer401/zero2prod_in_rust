@@ -1,7 +1,7 @@
 //! src/utils.rs
 
 use actix_web::HttpResponse;
-use actix_web::http::StatusCode;
+// use actix_web::http::StatusCode;
 use actix_web::http::header::LOCATION;
 
 pub fn e500<T>(e: T) -> actix_web::Error
