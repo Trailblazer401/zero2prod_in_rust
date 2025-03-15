@@ -6,6 +6,7 @@ use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use sqlx::ConnectOptions;
 
 use crate::domain::SubscriberEmail;
+use crate::email_client::EmailClient;
 
 #[derive(serde::Deserialize, Clone)]
 // 使用派生 trait 宏自动为结构体实现指定 trait，相当于使用 impl Clone for struct 并递归地为结构体中的每一类型进行 .clone() 方法调用（前提是每一类型都实现了Clone trait）
@@ -124,5 +125,16 @@ impl EmailClientSettings {
 
     pub fn timeout(&self) -> std::time::Duration {
         std::time::Duration::from_millis(self.timeout_millisec)
+    }
+
+    pub fn client(self) -> EmailClient {
+        let sender_email = self.sender().expect("Invalid sender email address.");
+        let timeout = self.timeout();
+        EmailClient::new(
+            self.base_url, 
+            sender_email, 
+            self.authorization_token, 
+            timeout
+        )
     }
 }

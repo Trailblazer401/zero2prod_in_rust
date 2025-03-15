@@ -4,12 +4,17 @@ use sqlx::{PgPool, Postgres, Transaction, Executor};
 use tracing::{field::display, Span};
 use uuid::Uuid;
 
-use crate::{domain::SubscriberEmail, email_client::EmailClient};
+use crate::{configurations::Settings, domain::SubscriberEmail, email_client::EmailClient, startup::get_connection_pool};
 
 struct NewsletterIssue {
     title: String,
     text_content: String,
     html_content: String,
+}
+
+pub enum ExecutionOutcome {
+    TaskCompleted,
+    EmptyQueue,
 }
 
 #[tracing::instrument(
@@ -20,11 +25,17 @@ struct NewsletterIssue {
     ),
     err
 )]
-async fn try_exec_task(
+pub async fn try_exec_task(
     pool: &PgPool,
     email_client: &EmailClient,
-) -> Result<(), anyhow::Error> {
-    if let Some((transaction, issue_id, email)) = deque_task(pool).await? {
+) -> Result<ExecutionOutcome, anyhow::Error> {
+    let task = deque_task(pool).await?;
+    if task.is_none() {
+        return Ok(ExecutionOutcome::EmptyQueue);
+    }
+    let (transaction, issue_id, email) = task.unwrap();
+
+    // if let Some((transaction, issue_id, email)) = deque_task(pool).await? {
         Span::current()
             .record("newsletter_issue_id", &display(issue_id))
             .record("subscriber_email", &display(&email));
@@ -55,9 +66,9 @@ async fn try_exec_task(
         }
 
         delete_task(transaction, issue_id, &email).await?;
-    }
+    // }
 
-    Ok(())
+    Ok(ExecutionOutcome::TaskCompleted)
 }
 
 type PgTransaction = Transaction<'static, Postgres>;
@@ -131,12 +142,28 @@ async fn get_issue(
 }
 
 async fn worker_loop(
-    pool: &PgPool,
-    email_client: &EmailClient,
+    pool: PgPool,
+    email_client: EmailClient,
 ) -> Result<(), anyhow::Error> {
     loop {
-        if try_exec_task(&pool, &email_client).await.is_err() {
-            tokio::time::sleep(Duration::from_secs(1)).await;
+        match try_exec_task(&pool, &email_client).await {
+            // tokio::time::sleep(Duration::from_secs(1)).await;
+            Ok(ExecutionOutcome::EmptyQueue) => {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+            }
+            Err(_) => {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            Ok(ExecutionOutcome::TaskCompleted) => {}
         }
     }
+}
+
+pub async fn run_worker_until_stopped(
+    configuration: Settings
+) -> Result<(), anyhow::Error> {
+    let conncetion_pool = get_connection_pool(&configuration.database);
+
+    let email_client = configuration.email_client.client();
+    worker_loop(conncetion_pool, email_client).await
 }
