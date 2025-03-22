@@ -1,6 +1,6 @@
 # Zero2Prod Newsletter System
 
-一个基于 Rust 构建的企业级邮件订阅系统。
+一个基于 Rust 构建的邮件简报订阅系统。
 
 ## 🌟 功能特性
 
